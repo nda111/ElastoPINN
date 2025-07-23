@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generator
+from typing import Generator, Optional
 import torch
 from torch import nn
 
@@ -23,6 +23,27 @@ class MLPBase(nn.Module, ABC):
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         return self.forward(x)
     
+    def _make_stem_block(self, hid_dim: Optional[int]=None):
+        if hid_dim is None:
+            hid_dim = self.hid_dim
+        return [
+            nn.Linear(self.in_dim, hid_dim),
+            self.activation_type(),
+        ]
+    
+    def _make_hidden_blocks(self, depth: int, hid_dim: Optional[int]=None):
+        if hid_dim is None:
+            hid_dim = self.hid_dim
+        return sum([
+            [nn.Linear(hid_dim, hid_dim), self.activation_type()]
+            for _ in range(depth)
+        ], list())
+    
+    def _make_linear_head(self, hid_dim: Optional[int]=None):
+        if hid_dim is None:
+            hid_dim = self.hid_dim
+        return nn.Linear(hid_dim, self.out_dim)
+    
     def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -35,6 +56,10 @@ class MLPBase(nn.Module, ABC):
         yield ('hid_dim', self.hid_dim)
         yield ('out_dim', self.out_dim)
         yield ('depth', self.depth)
+    
+    @property
+    def num_parameters(self):
+        return sum(map(torch.Tensor.numel, self.parameters()))
     
     def __str__(self) -> str:
         arg_str = ', '.join([
@@ -53,14 +78,11 @@ class MLP(MLPBase):
         nn.Module.__init__(self)
         MLPBase.__init__(self, in_dim, hid_dim, out_dim, depth, activation)
         
-        self.layers = nn.Sequential(*[
-            nn.Linear(in_dim, hid_dim), activation(),
-            *sum([
-                [nn.Linear(hid_dim, hid_dim), activation()]
-                for _ in range(depth)
-            ], list()),
-            nn.Linear(hid_dim, out_dim),
-        ])
+        self.layers = nn.Sequential(
+            *self._make_stem_block(),
+            *self._make_hidden_blocks(self.depth),
+            self._make_linear_head(),
+        )
         self._initialize_weights()
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -76,25 +98,11 @@ class GlobalMLP(MLPBase):
         nn.Module.__init__(self)
         MLPBase.__init__(self, in_dim, hid_dim, out_dim, depth, activation)
 
-        self.layer_input = nn.Sequential(
-            nn.Linear(self.in_dim, self.hid_dim),
-            activation(),
-        )
-        self.layer_hidden_0 = nn.Sequential(
-            *sum([
-                [nn.Linear(hid_dim, hid_dim), activation()]
-                for _ in range(depth - 2)
-            ], list())
-        )
-        self.layer_hidden_1 = nn.Sequential(
-            nn.Linear(self.hid_dim, self.hid_dim),
-            activation(),
-        )
-        self.layer_hidden_2 = nn.Sequential(
-            nn.Linear(self.hid_dim, self.hid_dim),
-            activation(),
-        )
-        self.layer_output = nn.Linear(self.hid_dim, self.out_dim)
+        self.layer_input = nn.Sequential(*self._make_stem_block())
+        self.layer_hidden_0 = nn.Sequential(*self._make_hidden_blocks(self.depth - 2))
+        self.layer_hidden_1 = nn.Sequential(*self._make_hidden_blocks(1))
+        self.layer_hidden_2 = nn.Sequential(*self._make_hidden_blocks(1))
+        self.layer_output = self._make_linear_head()
         
         self._initialize_weights()
         
