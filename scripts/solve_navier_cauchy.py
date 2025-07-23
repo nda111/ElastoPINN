@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 
 from configs.config import CFG as cfg
 from data.pac_nerf import PACNeRFDataset
-from models.navier_cauchy_ground import NavierCauchy
+from models.navier_cauchy import NavierCauchy
 
 
 # -------------------------------------
