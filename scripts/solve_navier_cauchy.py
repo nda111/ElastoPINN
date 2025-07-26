@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 from tqdm import tqdm
 
 import torch
@@ -7,34 +8,56 @@ from torch.utils.data import DataLoader
 from configs.config import CFG as cfg
 from data.pac_nerf import PACNeRFDataset
 from models.navier_cauchy import NavierCauchy
+from utils.logging import (
+    Averager,
+    CheckpointWriter,
+)
 
 
 # -------------------------------------
 # Load configuration
 # -------------------------------------
-object_name = 'bird'
+parser = ArgumentParser('Navier-Cauchy')
+add = parser.add_argument
+add('--device', '-d', type=int, default=0)
+add('--object', '-o', type=str, default='bird')
+add('--num-frames', '-nf', type=int, default=14)
+add('--batch-size', '-bs', type=int, default=20000)
+add('--learning-rate', '-lr', type=float, default=1.0E-4)
+add('--epochs', '-e', type=int, default=100_000)
+add('--tag', type=str, default=None)
+args = parser.parse_args()
+
+# -------------------------------------
+# Load configuration
+# -------------------------------------
+object_name = args.object
 cfg_fname = f'configs/{object_name}.yaml'
 cfg.merge_from_file(cfg_fname)
+
+if torch.cuda.is_available():
+    DEVICE = torch.device('cpu')
+else:
+    DEVICE = torch.device('cuda', args.device)
 
 # -------------------------------------
 # Dataset & DataLoader
 # -------------------------------------
 
+num_frames = args.num_frames
+num_samples = args.batch_size // num_frames
+
 dataset = PACNeRFDataset(
     dataroot="dataset/pac-nerf",
     instance=object_name,
     verbose=True,
-    max_frames=14
+    max_frames=num_frames
 )
-num_samples = 20000
-
 loader = DataLoader(
     dataset,
-    batch_size=14,
+    batch_size=num_frames,
     shuffle=True,
 )
-
-DEVICE = torch.device('cuda', 0)
 
 # -------------------------------------
 # PINN Model
@@ -62,12 +85,12 @@ model = NavierCauchy(
 # -------------------------------------
 # Optimizers & Schedulers
 # -------------------------------------
-n_epochs = 100_000
+n_epochs = args.epochs
 
 optimizers = [
     optim.Adam(
         model.network_parameters(),
-        lr=1e-4 ,
+        lr=args.learning_rate,
     ), 
     optim.Adam(
         model.property_parameters(),
@@ -94,20 +117,26 @@ loss_weight_bc: float = cfg.ELASTOMER.LOSS.BC
 loss_weight_ic: float = cfg.ELASTOMER.LOSS.IC
 
 # Logger
-loss_history = []
-loss_history_detailed = {}
-prop_history = {
+loss_history = Averager()
+loss_history_detailed = Averager()
+prop_history = Averager()
+prop_history.push({
     'density': [model.density.data.item()],
     'youngs': [model.youngs.data.item()],
     'poissons': [model.poissons.data.item()],
-}
-best_loss = torch.inf
+}, flush=True)
+ckpt_writer = CheckpointWriter(
+    dir_name=f'./output/{object_name}' if args.tag else f'./output/{object_name}_{args.tag}',
+    save_first=False,
+    save_every=0,
+    save_best=True,
+    save_last=True,
+    larger_better=False,
+)
 
 # The training loop
 for epoch in range(n_epochs):
-    epoch_loss = 0.0
-    epoch_loss_detailed = {}
-
+    
     for sample in tqdm(loader, desc=f"Epoch {epoch+1}/{n_epochs}"):
         
         # input preparation
@@ -140,33 +169,26 @@ for epoch in range(n_epochs):
             optimizer.zero_grad()
 
         # logging the losses
-        epoch_loss += total_loss.clone().detach().cpu().item()
-        for key, val in losses.items():
-                if isinstance(val, torch.Tensor):
-                    val = val.detach().cpu().item()
-                if key in epoch_loss_detailed:
-                    epoch_loss_detailed[key] += val
-                else:
-                    epoch_loss_detailed[key] = val
+        loss_history_detailed.push(losses)
 
+    # logging the losses 
+    epoch_loss_detailed = loss_history_detailed.flush()
+    epoch_loss = sum(epoch_loss_detailed.values())
+
+    # scheduler step w.r.t. to the total loss
     for scheduler in schedulers:
         scheduler.step(epoch_loss)
 
-    # logging the losses 
-    loss_history.append(epoch_loss)
-    for key, val in epoch_loss_detailed.items():
-        if key in loss_history_detailed:
-            loss_history_detailed[key].append(val)
-        else:
-            loss_history_detailed[key] = [val]
-
-    # logging the physical parameters
-    prop_history['youngs'].append(model.youngs.data.item())
-    prop_history['poissons'].append(model.poissons.data.item())
-    prop_history['density'].append(model.density.data.item())
+    # logging the physical parameters and total loss
+    loss_history.push(epoch_loss_detailed, flush=True)
+    prop_history.push({
+        'youngs': model.youngs.data,
+        'poissons': model.poissons.data,
+        'density': model.density.data,
+    }, flush=True)
     
     # save the checkpoints to the file(s)
-    ckpt = {
+    ckpt_writer.write({
         'epoch': epoch + 1,
         'model': {
             key: val.clone().detach().cpu()
@@ -180,11 +202,7 @@ for epoch in range(n_epochs):
         'loss_list': loss_history,
         'loss_detailed': loss_history_detailed,
         'prop_traj': prop_history,
-    }
-    if epoch_loss < best_loss:
-        best_loss = epoch_loss
-        torch.save(ckpt,  'best.pt')
-    torch.save(ckpt, 'last.pt')
+    })
 
     print(
         f"Epoch {epoch+1}", 
