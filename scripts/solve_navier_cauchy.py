@@ -163,7 +163,13 @@ for epoch in range(n_epochs):
             raise NotImplementedError(model.input_shape)
 
         # forward
-        losses = model.compute_loss(xyzt, displacement=displacement)
+        losses = model.compute_loss(
+            xyzt,
+            time_dim=num_timesteps,
+            point_dim=num_points,
+            time=time_value,
+            displacement=displacement,
+        )
         losses: dict[str, torch.Tensor] = {
             'pde_loss': losses['pde_loss'] * loss_weight_pde,
             'gt_loss': losses['gt_loss'] * loss_weight_gt,

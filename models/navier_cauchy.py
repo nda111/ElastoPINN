@@ -130,11 +130,14 @@ class NavierCauchy(MLP):
     def compute_loss(
         self,
         xyzt: torch.Tensor,
+        time_dim: int, point_dim: int,
         displacement: torch.Tensor = None,
+        time: torch.Tensor = None,
         f_ext: torch.Tensor = None,
         use_pde: bool = True,
         use_ic: bool = True,
         use_bc: bool = True,
+        use_vel: bool = False,
     ) -> dict[str, torch.Tensor]:
         """
         주어진 입력에 대한 손실 함수들을 계산합니다.
@@ -264,6 +267,20 @@ class NavierCauchy(MLP):
             
             # 최종 BC Loss는 각 조건들의 합
             bc_loss = loss_penetration + loss_tensile_stress + loss_no_contact_stress
+            
+        # 6. Velocity-Driven GT Loss
+        if use_vel and (displacement is not None) and (time is not None):
+            uvw_unflat = u.reshape(time_dim, point_dim, -1)
+            disp_unflat = displacement.reshape(time_dim, point_dim, -1)
+            time_unflat = time.reshape(time_dim, point_dim, -1)
+            delta_time = time_unflat[+1:] - time_unflat[:-1]
+            vel_unflat = (uvw_unflat[+1:] - uvw_unflat[:-1]) / delta_time
+            vel_gt_unflat = (disp_unflat[+1:] - disp_unflat[:-1]) / delta_time
+            l1_loss = torch.mean((vel_unflat - vel_gt_unflat).abs())
+            l2_loss = torch.mean((vel_unflat - vel_gt_unflat).square())
+            vel_loss = l2_loss + l1_loss
+        else:
+            vel_loss = torch.tensor(0.0, **kwargs)
 
         # 7. Ground Truth (GT) Loss 
         gt_loss = torch.tensor(0.0, **kwargs)
@@ -278,6 +295,7 @@ class NavierCauchy(MLP):
         return {
             "pde_loss":      pde_loss,
             "ic_loss":       ic_loss,
+            "vel_loss":      vel_loss,
             "gt_loss":       gt_loss,
             "bc_loss" :      bc_loss,
         }
