@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generator, Optional
+from typing import Generator, Optional, Literal
 import torch
 from torch import nn
 
@@ -15,6 +15,10 @@ class MLPBase(nn.Module, ABC):
         self.out_dim = out_dim
         self.depth = depth
         self.activation_type = activation
+        
+    @property
+    def input_shape(self) -> Literal['flat', 'spatio-temporal']:
+        return 'flat'
         
     @abstractmethod
     def forward(self, x: torch.Tensor) -> torch.Tensor:

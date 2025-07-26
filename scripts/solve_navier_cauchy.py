@@ -140,17 +140,27 @@ for epoch in range(n_epochs):
     for sample in tqdm(loader, desc=f"Epoch {epoch+1}/{n_epochs}"):
         
         # input preparation
-        num_timesteps, num_points, _ = sample['geometry'].shape
-
-        geometry = sample["geometry"].flatten(0, 1)  # [n_samples, 3]
-        sampling_indices = torch.randperm(len(geometry) - 1)[:num_samples]
+        geometry: torch.Tensor = sample['geometry']
+        displacement: torch.Tensor = sample['displacement']
+        time_value: torch.Tensor = sample['time'][0].reshape(1, -1, 1)
+        num_timesteps, num_points, _ = geometry.shape
         
-        geometry = geometry[sampling_indices].to(DEVICE)
-        displacement = sample['displacement'].flatten(0, 1)[sampling_indices].to(DEVICE)
-        time_value = sample['time'][:, 0:1].expand(num_timesteps, num_points).flatten(0, 1)
-
-        t_values = time_value[sampling_indices, None].to(DEVICE)
-        xyzt = torch.cat([geometry, t_values], dim=1)  # [N_points, 4]
+        sample_indices = torch.randperm(num_points - 1)[:num_samples]
+        geometry = geometry[:, sample_indices].to(DEVICE)  # ...........| T, P, 3
+        displacement = displacement[:, sample_indices].to(DEVICE)  # ...| T, P, 3
+        time_value = time_value[:, sample_indices].to(DEVICE) 
+        time_value = time_value.expand_as(geometry[..., 0:1])  # .......| T, P, 1
+        xyzt = torch.cat([geometry, time_value], dim=-1)  # ............| T, P, 4
+        
+        if model.input_shape == 'flat':
+            geometry = geometry.flatten(0, 1)  # .......................| TP, 3
+            displacement = displacement.flatten(0, 1)  # ...............| TP, 3 
+            time_value = time_value.flatten(0, 1)  # ...................| TP, 1 
+            xyzt = xyzt.flatten(0, 1)  # ...............................| TP, 4
+        elif model.input_shape == 'spatio-temporal':
+            pass
+        else:
+            raise NotImplementedError(model.input_shape)
 
         # forward
         losses = model.compute_loss(xyzt, displacement=displacement)
@@ -180,7 +190,9 @@ for epoch in range(n_epochs):
         scheduler.step(epoch_loss)
 
     # logging the physical parameters and total loss
-    loss_history.push(epoch_loss_detailed, flush=True)
+    loss_history.push({
+        'loss': epoch_loss,
+    }, flush=True)
     prop_history.push({
         'youngs': model.youngs.data,
         'poissons': model.poissons.data,
@@ -202,11 +214,11 @@ for epoch in range(n_epochs):
         'loss_list': loss_history,
         'loss_detailed': loss_history_detailed,
         'prop_traj': prop_history,
-    })
+    }, score=epoch_loss)
 
     print(
         f"Epoch {epoch+1}", 
-        f"Loss: {epoch_loss:.6f}", 
+        f"Loss: {epoch_loss.item():.6f}", 
         f"ρ: {model.density.item():.2E}", 
         f"ν: {model.poissons.item():.2E}", 
         f"E: {model.youngs.item():.2E}", 
