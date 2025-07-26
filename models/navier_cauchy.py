@@ -268,8 +268,8 @@ class NavierCauchy(MLP):
         # 7. Ground Truth (GT) Loss 
         gt_loss = torch.tensor(0.0, **kwargs)
         if displacement is not None:
-            l1_loss = F.l1_loss(uvw, displacement)
-            l2_loss = torch.mean((uvw - displacement)**2)
+            l1_loss = torch.mean((uvw_unflat - displacement).abs())
+            l2_loss = torch.mean((uvw_unflat - displacement).square())
             cosine_loss = torch.mean(1 - F.cosine_similarity(uvw, displacement, dim=-1))
             lambda_val = 1.0 
             gt_loss = l2_loss + l1_loss
