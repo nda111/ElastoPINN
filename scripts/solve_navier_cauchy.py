@@ -142,7 +142,7 @@ for epoch in range(n_epochs):
         # input preparation
         geometry: torch.Tensor = sample['geometry']
         displacement: torch.Tensor = sample['displacement']
-        time_value: torch.Tensor = sample['time'][0].reshape(1, -1, 1)
+        time_value: torch.Tensor = sample['time'][0].reshape(-1, 1, 1)
         num_timesteps, num_points, _ = geometry.shape
         
         sample_indices = torch.randperm(num_points - 1)[:num_samples]
