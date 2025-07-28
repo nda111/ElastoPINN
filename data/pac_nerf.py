@@ -144,7 +144,7 @@ class PACNeRFDataset(Dataset):
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         return {
             'projection': self.images[:, index],
-            'geometry': self.pointclouds[index],
+            'geometry': self.pointclouds[0],
             'displacement': self.pointclouds[index] - self.pointclouds[0],
             'time': self.metadata['time'][:, index],
             'c2w': self.metadata['c2w'][:, index],
