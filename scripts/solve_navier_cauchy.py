@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from tqdm import tqdm
+import inspect
 
 import torch
 from torch import nn, optim
@@ -133,10 +134,16 @@ prop_history.push({
 ckpt_writer = CheckpointWriter(
     dir_name=f'./output/{object_name}_{args.tag}' if args.tag else f'./output/{object_name}',
     save_first=False,
-    save_every=0,
+    save_every=1000,
     save_best=True,
     save_last=True,
     larger_better=False,
+)
+ckpt_writer.copy_code(__file__)
+ckpt_writer.copy_code(inspect.getfile(NavierCauchy))
+ckpt_writer.copy_code(
+    inspect.getfile(NavierCauchy.__base__),
+    'mlp.py',
 )
 
 # The training loop

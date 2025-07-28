@@ -1,4 +1,6 @@
+from typing import Optional
 import os
+import shutil
 from numbers import Number
 import torch
 
@@ -103,3 +105,17 @@ class CheckpointWriter:
         
         if self.save_last:
             torch.save(checkpoint, os.path.join(self.dir_name, 'last.pt'))
+    
+    def copy_code(self, src_fname: os.PathLike, dst_fname: Optional[os.PathLike]=None):
+        if not os.path.exists(src_fname):
+            raise FileNotFoundError(f"Source file '{src_fname}' does not exist.")
+        
+        code_dname = os.path.join(self.dir_name, 'code')
+        if not os.path.exists(code_dname):
+            os.makedirs(code_dname, exist_ok=True)
+        
+        if dst_fname is None:
+            dst_fname = os.path.basename(src_fname)
+        dst_fname = os.path.join(code_dname, dst_fname)
+        
+        return shutil.copy(src_fname, dst_fname)
