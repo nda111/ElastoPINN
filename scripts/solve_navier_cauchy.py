@@ -121,9 +121,9 @@ loss_history = Averager()
 loss_history_detailed = Averager()
 prop_history = Averager()
 prop_history.push({
-    'density': [model.density.data.item()],
-    'youngs': [model.youngs.data.item()],
-    'poissons': [model.poissons.data.item()],
+    'density': model.density,
+    'youngs': model.youngs,
+    'poissons': model.poissons,
 }, flush=True)
 ckpt_writer = CheckpointWriter(
     dir_name=f'./output/{object_name}' if args.tag else f'./output/{object_name}_{args.tag}',
