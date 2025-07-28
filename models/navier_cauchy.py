@@ -1,9 +1,10 @@
 import torch
 from torch import nn, autograd
 import torch.nn.functional as F
-# from .mlp import MLP           # mlp.py 그대로 재사용
-from .mlp import GlobalMLP as MLP           # mlp.py 그대로 재사용
-from typing import Optional, Any, Dict  
+# from .mlp import MLP 
+from .mlp import GlobalMLP as MLP 
+# from .time_attn_mlp import TimeAttnMLP as MLP 
+from typing import Any, Dict  
 
 
 class NavierCauchy(MLP):
@@ -154,15 +155,18 @@ class NavierCauchy(MLP):
         # 각 출력(u, v, w)에 대해 개별적으로 그래디언트를 계산합니다.
         
         # u에 대한 1차 미분, autograd.grad 는 outputs 이 미분 대상 Y, input이 미분의 변수 X dY/dX 
-        grad_u = torch.autograd.grad(outputs=u, inputs=xyzt, grad_outputs=torch.ones_like(u), create_graph=True)[0]
+        grad_u = autograd.grad(outputs=u, inputs=xyzt, grad_outputs=torch.ones_like(u), create_graph=True)[0]
+        grad_u = grad_u.reshape(-1, 4)
         du_dx, du_dy, du_dz, du_dt = grad_u[:, 0], grad_u[:, 1], grad_u[:, 2], grad_u[:, 3]
 
         # v에 대한 1차 미분
-        grad_v = torch.autograd.grad(outputs=v, inputs=xyzt, grad_outputs=torch.ones_like(v), create_graph=True)[0]
+        grad_v = autograd.grad(outputs=v, inputs=xyzt, grad_outputs=torch.ones_like(v), create_graph=True)[0]
+        grad_v = grad_v.reshape(-1, 4)
         dv_dx, dv_dy, dv_dz, dv_dt = grad_v[:, 0], grad_v[:, 1], grad_v[:, 2], grad_v[:, 3]
 
         # w에 대한 1차 미분
-        grad_w = torch.autograd.grad(outputs=w, inputs=xyzt, grad_outputs=torch.ones_like(w), create_graph=True)[0]
+        grad_w = autograd.grad(outputs=w, inputs=xyzt, grad_outputs=torch.ones_like(w), create_graph=True)[0]
+        grad_w = grad_w.reshape(-1, 4)
         dw_dx, dw_dy, dw_dz, dw_dt = grad_w[:, 0], grad_w[:, 1], grad_w[:, 2], grad_w[:, 3]
         
         # 2차 시간 미분 계산
@@ -223,10 +227,12 @@ class NavierCauchy(MLP):
         #     ic_loss = torch.tensor(0.0, **kwargs)
         # Initial condition
 
-        ic_mask = xyzt[:, 3] == 0.0
+        ic_mask = xyzt[..., 3] == 0.0
         if (ic_mask.sum() > 0):
-            ic_xyzt = xyzt[ic_mask]
-            ic_u = self.forward(ic_xyzt)
+            if xyzt.ndim == 2:
+                ic_u = self.forward(xyzt[ic_mask]).reshape(-1, 3)
+            elif xyzt.ndim == 3:
+                ic_u = self.forward(xyzt).reshape(time_dim, point_dim, -1)[ic_mask]
             u0 = torch.zeros_like(ic_u)
             ic_loss = torch.nn.functional.mse_loss(ic_u, u0)
         else:
@@ -238,7 +244,7 @@ class NavierCauchy(MLP):
         if use_bc:
             # 5.1. 현재 y 좌표 계산
             # 초기 y좌표 + y방향 변위
-            y_initial = xyzt[:, self.up_index:self.up_index+1]
+            y_initial = xyzt[..., self.up_index].reshape(-1, 1)
             y_current = y_initial + v
 
             # 5.2. 비침투 손실 (Penetration Loss)
@@ -285,10 +291,12 @@ class NavierCauchy(MLP):
         # 7. Ground Truth (GT) Loss 
         gt_loss = torch.tensor(0.0, **kwargs)
         if displacement is not None:
+            if xyzt.ndim == 2:
+                uvw_unflat = u
+            elif xyzt.ndim == 3:
+                uvw_unflat = u.reshape(time_dim, point_dim, -1)
             l1_loss = torch.mean((uvw_unflat - displacement).abs())
             l2_loss = torch.mean((uvw_unflat - displacement).square())
-            cosine_loss = torch.mean(1 - F.cosine_similarity(uvw, displacement, dim=-1))
-            lambda_val = 1.0 
             gt_loss = l2_loss + l1_loss
 
 

@@ -142,14 +142,16 @@ for epoch in range(n_epochs):
         # input preparation
         geometry: torch.Tensor = sample['geometry']
         displacement: torch.Tensor = sample['displacement']
-        time_value: torch.Tensor = sample['time'][0].reshape(-1, 1, 1)
+        time_value: torch.Tensor = sample['time'][:, 0].reshape(-1, 1, 1)
         num_timesteps, num_points, _ = geometry.shape
         
         sample_indices = torch.randperm(num_points - 1)[:num_samples]
+        num_points = len(sample_indices)
+        
         geometry = geometry[:, sample_indices].to(DEVICE)  # ...........| T, P, 3
         displacement = displacement[:, sample_indices].to(DEVICE)  # ...| T, P, 3
-        time_value = time_value[:, sample_indices].to(DEVICE) 
         time_value = time_value.expand_as(geometry[..., 0:1])  # .......| T, P, 1
+        time_value = time_value.to(DEVICE)
         xyzt = torch.cat([geometry, time_value], dim=-1)  # ............| T, P, 4
         
         if model.input_shape == 'flat':
