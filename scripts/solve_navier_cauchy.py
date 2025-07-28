@@ -36,9 +36,9 @@ cfg_fname = f'configs/{object_name}.yaml'
 cfg.merge_from_file(cfg_fname)
 
 if torch.cuda.is_available():
-    DEVICE = torch.device('cpu')
-else:
     DEVICE = torch.device('cuda', args.device)
+else:
+    DEVICE = torch.device('cpu')
 
 # -------------------------------------
 # Dataset & DataLoader
@@ -59,6 +59,10 @@ loader = DataLoader(
     shuffle=True,
 )
 
+
+# for s in loader : 
+#     print(s['time'])
+# quit()
 # -------------------------------------
 # PINN Model
 # -------------------------------------
@@ -88,7 +92,7 @@ model = NavierCauchy(
 n_epochs = args.epochs
 
 optimizers = [
-    optim.Adam(
+    optim.AdamW(
         model.network_parameters(),
         lr=args.learning_rate,
     ), 
@@ -185,6 +189,8 @@ for epoch in range(n_epochs):
         # loss backward and gradient steps
         total_loss = sum(losses.values())
         total_loss.backward()
+
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # clipping 
         for optimizer in optimizers:
             optimizer.step()
             optimizer.zero_grad()
