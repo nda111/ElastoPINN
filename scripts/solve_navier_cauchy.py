@@ -126,7 +126,7 @@ prop_history.push({
     'poissons': model.poissons,
 }, flush=True)
 ckpt_writer = CheckpointWriter(
-    dir_name=f'./output/{object_name}' if args.tag else f'./output/{object_name}_{args.tag}',
+    dir_name=f'./output/{object_name}_{args.tag}' if args.tag else f'./output/{object_name}',
     save_first=False,
     save_every=0,
     save_best=True,
@@ -175,6 +175,7 @@ for epoch in range(n_epochs):
         losses: dict[str, torch.Tensor] = {
             'pde_loss': losses['pde_loss'] * loss_weight_pde,
             'gt_loss': losses['gt_loss'] * loss_weight_gt,
+            'vel_loss': losses['vel_loss'] * loss_weight_gt,
             'bc_loss': losses['bc_loss'] * loss_weight_bc,
             'ic_loss': losses['ic_loss'] * loss_weight_ic,
         }
