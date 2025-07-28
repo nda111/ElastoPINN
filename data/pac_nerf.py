@@ -93,7 +93,7 @@ class PACNeRFDataset(Dataset):
             
             # max frame 보다 크면 집어 넣지 마라 
             
-            if frame >= num_frames:
+            if (frame < 0) or (frame >= num_frames):
                 continue
             self.metadata['time'][view, frame] = sample['time'] * 2.0  # map to [0, 1]
             self.metadata['c2w'][view, frame] = torch.tensor(sample['c2w'])
