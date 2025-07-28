@@ -113,7 +113,9 @@ class GlobalMLP(MLPBase):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_i = self.layer_input.forward(x)
         x_h0 = self.layer_hidden_0.forward(x_i)
-        x_h1 = self.layer_hidden_1.forward(x_h0) + x_h0
+        x_max = x_h0.max(dim=-2, keepdim=True).values  # max-pooled by the point dimension
+        x_avg = x_h0.mean(dim=-2, keepdim=True)        # average-pooled by the point dimension
+        x_h1 = self.layer_hidden_1.forward(x_h0) + x_max + x_avg
         x_h2 = self.layer_hidden_2.forward(x_h1)
         x_o = self.layer_output.forward(x_h2)
         return x_o
