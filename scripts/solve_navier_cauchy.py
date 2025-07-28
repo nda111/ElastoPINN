@@ -113,6 +113,7 @@ schedulers = [
 # The loss weights
 loss_weight_pde: float = cfg.ELASTOMER.LOSS.PDE
 loss_weight_gt: float = cfg.ELASTOMER.LOSS.GT
+loss_weight_vel: float = cfg.ELASTOMER.LOSS.VEL
 loss_weight_bc: float = cfg.ELASTOMER.LOSS.BC
 loss_weight_ic: float = cfg.ELASTOMER.LOSS.IC
 
@@ -176,7 +177,7 @@ for epoch in range(n_epochs):
         losses: dict[str, torch.Tensor] = {
             'pde_loss': losses['pde_loss'] * loss_weight_pde,
             'gt_loss': losses['gt_loss'] * loss_weight_gt,
-            'vel_loss': losses['vel_loss'] * loss_weight_gt,
+            'vel_loss': losses['vel_loss'] * loss_weight_vel,
             'bc_loss': losses['bc_loss'] * loss_weight_bc,
             'ic_loss': losses['ic_loss'] * loss_weight_ic,
         }
