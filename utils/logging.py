@@ -74,8 +74,7 @@ class CheckpointWriter:
         self.larger_better = larger_better
 
         if os.path.exists(dir_name):
-            pass
-            # raise FileExistsError(f"'{dir_name}' already exists.")
+            raise FileExistsError(f"'{dir_name}' already exists.")
         else:
             os.makedirs(dir_name, exist_ok=False)
         self.count = 0

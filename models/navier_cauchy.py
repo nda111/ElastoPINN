@@ -37,12 +37,18 @@ class NavierCauchy(MLP):
         )
 
         # Log parameterization for positive values
-        self.log_density  = nn.Parameter(torch.log(torch.tensor(density)),
-                                         requires_grad = optimize_properties)
-        self.log_youngs   = nn.Parameter(torch.log(torch.tensor(youngs)),
-                                         requires_grad = optimize_properties)
-        self.log_poissons = nn.Parameter(torch.log(torch.tensor(poissons)),
-                                         requires_grad = optimize_properties)
+        self.log_density  = nn.Parameter(
+            torch.log(torch.tensor(density)), 
+            requires_grad=optimize_properties,
+        )
+        self.log_youngs   = nn.Parameter(
+            torch.log(torch.tensor(youngs)), 
+            requires_grad=optimize_properties,
+        )
+        self.log_poissons = nn.Parameter(
+            torch.log(torch.tensor(poissons)), 
+            requires_grad=optimize_properties,
+        )
 
         self.ground_pos  = ground_pos
         self.gravity     = gravity
@@ -50,11 +56,16 @@ class NavierCauchy(MLP):
 
     # 재료 상수 property
     @property
-    def density(self):  return torch.exp(self.log_density)
+    def density(self): 
+        return torch.exp(self.log_density)
+
     @property
-    def youngs(self):   return torch.exp(self.log_youngs)
+    def youngs(self): 
+        return torch.exp(self.log_youngs)
+
     @property
-    def poissons(self): return torch.exp(self.log_poissons)
+    def poissons(self): 
+        return torch.exp(self.log_poissons)
 
     def network_parameters(self):
         """ Returns only the MLP parameters. """
@@ -77,15 +88,15 @@ class NavierCauchy(MLP):
 
         # 2. First-order spatial derivatives
         grad_u = autograd.grad(outputs=u, inputs=xyzt, grad_outputs=torch.ones_like(u), create_graph=True)[0]
-        du_dx, du_dy, du_dz, du_dt = grad_u[:, 0], grad_u[:, 1], grad_u[:, 2], grad_u[:, 3]
+        du_dx, du_dy, du_dz, _ = torch.unbind(grad_u, dim=-1)
 
         # Differentiation of v with respect to xyzt.
         grad_v = autograd.grad(outputs=v, inputs=xyzt, grad_outputs=torch.ones_like(v), create_graph=True)[0]
-        dv_dx, dv_dy, dv_dz, dv_dt = grad_v[:, 0], grad_v[:, 1], grad_v[:, 2], grad_v[:, 3]
+        dv_dx, dv_dy, dv_dz, _ = torch.unbind(grad_v, dim=-1)
 
         # Differentiation of w with respect to xyzt.
         grad_w = autograd.grad(outputs=w, inputs=xyzt, grad_outputs=torch.ones_like(w), create_graph=True)[0]
-        dw_dx, dw_dy, dw_dz, dw_dt = grad_w[:, 0], grad_w[:, 1], grad_w[:, 2], grad_w[:, 3]
+        dw_dx, dw_dy, dw_dz, _ = torch.unbind(grad_w, dim=-1)
         
         # 3. Calculate the strain tensor.
         # epsilon_ij = 0.5 * (∂u_i/∂x_j + ∂u_j/∂x_i)
@@ -132,7 +143,7 @@ class NavierCauchy(MLP):
         use_pde: bool = True,
         use_ic: bool = True,
         use_bc: bool = True,
-        use_vel: bool = False,
+        use_vel: bool = True,
     ) -> dict[str, torch.Tensor]:
         """ Calculates the loss for the Navier-Cauchy equation. """
         
@@ -143,24 +154,43 @@ class NavierCauchy(MLP):
         uvw = self.forward(xyzt)
         u, v, w = torch.unbind(uvw, dim=-1)
 
-
         # 2. autograds (u, v, w) with respect to xyzt.
-        grad_u = autograd.grad(outputs=u, inputs=xyzt, grad_outputs=torch.ones_like(u), create_graph=True)[0]
-        grad_u = grad_u.reshape(-1, 4)
-        du_dx, du_dy, du_dz, du_dt = grad_u[:, 0], grad_u[:, 1], grad_u[:, 2], grad_u[:, 3]
+        grad_u = autograd.grad(
+            outputs=u, inputs=xyzt, 
+            grad_outputs=torch.ones_like(u), 
+            create_graph=True,
+        )[0].reshape(-1, 4)
+        du_dx, du_dy, du_dz, du_dt = torch.unbind(grad_u, dim=-1)
 
-        grad_v = autograd.grad(outputs=v, inputs=xyzt, grad_outputs=torch.ones_like(v), create_graph=True)[0]
-        grad_v = grad_v.reshape(-1, 4)
-        dv_dx, dv_dy, dv_dz, dv_dt = grad_v[:, 0], grad_v[:, 1], grad_v[:, 2], grad_v[:, 3]
+        grad_v = autograd.grad(
+            outputs=v, inputs=xyzt, 
+            grad_outputs=torch.ones_like(v), 
+            create_graph=True,
+        )[0].reshape(-1, 4)
+        dv_dx, dv_dy, dv_dz, dv_dt = torch.unbind(grad_v, dim=-1)
 
-        grad_w = autograd.grad(outputs=w, inputs=xyzt, grad_outputs=torch.ones_like(w), create_graph=True)[0]
-        grad_w = grad_w.reshape(-1, 4)
-        dw_dx, dw_dy, dw_dz, dw_dt = grad_w[:, 0], grad_w[:, 1], grad_w[:, 2], grad_w[:, 3]
+        grad_w = autograd.grad(
+            outputs=w, inputs=xyzt, 
+            grad_outputs=torch.ones_like(w), 
+            create_graph=True,
+        )[0].reshape(-1, 4)
+        dw_dx, dw_dy, dw_dz, dw_dt = torch.unbind(grad_w, dim=-1)
         
-        du_dt2 = autograd.grad(outputs=du_dt, inputs=xyzt, grad_outputs=torch.ones_like(du_dt), create_graph=True)[0][:, 3]
-        dv_dt2 = autograd.grad(outputs=dv_dt, inputs=xyzt, grad_outputs=torch.ones_like(dv_dt), create_graph=True)[0][:, 3]
-        dw_dt2 = autograd.grad(outputs=dw_dt, inputs=xyzt, grad_outputs=torch.ones_like(dw_dt), create_graph=True)[0][:, 3]
-
+        du_dt2 = autograd.grad(
+            outputs=du_dt, inputs=xyzt, 
+            grad_outputs=torch.ones_like(du_dt), 
+            create_graph=True,
+        )[0][:, 3]
+        dv_dt2 = autograd.grad(
+            outputs=dv_dt, inputs=xyzt, 
+            grad_outputs=torch.ones_like(dv_dt), 
+            create_graph=True,
+        )[0][:, 3]
+        dw_dt2 = autograd.grad(
+            outputs=dw_dt, inputs=xyzt, 
+            grad_outputs=torch.ones_like(dw_dt), 
+            create_graph=True,
+        )[0][:, 3]
 
         # 3. PDE Loss (residual of the Navier-Cauchy equation)
         pde_loss = torch.tensor(0.0, **kwargs)
@@ -204,7 +234,6 @@ class NavierCauchy(MLP):
             pde_loss = torch.mean(pde_x**2 + pde_y**2 + pde_z**2)
 
         # 4. Initial Condition (IC) Loss
-
         ic_mask = xyzt[..., 3] == 0.0
         if use_ic and (ic_mask.sum() > 0):
             if xyzt.ndim == 2:
@@ -217,7 +246,6 @@ class NavierCauchy(MLP):
             ic_loss = torch.tensor(0.0, **kwargs)
 
         # 5. Boundary Condition (BC) Loss
-        
         bc_loss = torch.tensor(0.0, **kwargs)
         if use_bc:
             # 5.1. y-coordinate of the current position
@@ -270,7 +298,6 @@ class NavierCauchy(MLP):
             l2_loss = torch.mean((uvw - disp_flat).square())
             gt_loss = l2_loss + l1_loss
 
-
         return {
             "pde_loss":      pde_loss,
             "ic_loss":       ic_loss,
@@ -278,7 +305,6 @@ class NavierCauchy(MLP):
             "gt_loss":       gt_loss,
             "bc_loss" :      bc_loss,
         }
-
 
 
 if __name__ == "__main__":

@@ -171,6 +171,7 @@ for epoch in range(n_epochs):
             point_dim=num_points,
             time=time_value,
             displacement=displacement,
+            use_vel=True,
         )
         losses: dict[str, torch.Tensor] = {
             'pde_loss': losses['pde_loss'] * loss_weight_pde,
