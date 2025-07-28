@@ -57,7 +57,7 @@ class PointNet(MLPBase):
         dec = dec.transpose(1, 2)  # ................| T, P, 128
         
         out = self.head.forward(dec)  # .............| T, P, 3
-        return out
+        return out.flatten(0, 1)  # .................| TP, 3
         
 
 if __name__ == '__main__':
