@@ -239,9 +239,9 @@ for epoch in range(n_epochs):
             optimizer.state_dict() 
             for optimizer in optimizers
         ],
-        'loss_list': loss_history,
-        'loss_detailed': loss_history_detailed,
-        'prop_traj': prop_history,
+        'loss_list': loss_history.gather(),
+        'loss_detailed': loss_history_detailed.gather(),
+        'prop_traj': prop_history.gather(),
     }, score=epoch_loss)
 
     print(
