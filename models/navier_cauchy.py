@@ -1,8 +1,6 @@
 import torch
 from torch import nn, autograd
-# from .mlp import MLP 
-from .mlp import GlobalMLP as MLP 
-# from .time_attn_mlp import TimeAttnMLP as MLP 
+from .pointnet import PointNet as MLP
 from typing import Any, Dict  
 
 
@@ -15,7 +13,9 @@ class NavierCauchy(MLP):
         poissons: float = 0.30,
         ground_pos: float = 0.0,      # the ground will be at `y = ground_pos`
         gravity: float = 9.8,         # positive sign for downward
-        optimize_properties: bool = False,
+        optimize_density : bool=False,
+        optimize_youngs  : bool=False,
+        optimize_poissons: bool=False,
         activation = nn.Tanh,
         up_index: int = 1             # 0:x, 1:y, 2:z -> suppose `y` is the vertical axis`
     ):
@@ -32,22 +32,24 @@ class NavierCauchy(MLP):
             depth=depth,
             density=density, youngs=youngs, poissons=poissons,
             ground_pos=ground_pos, gravity=gravity,
-            optimize_properties=optimize_properties,
+            optimize_density=optimize_density,
+            optimize_youngs=optimize_youngs,
+            optimize_poissons=optimize_poissons,
              up_index=up_index,
         )
 
         # Log parameterization for positive values
         self.log_density  = nn.Parameter(
             torch.log(torch.tensor(density)), 
-            requires_grad=optimize_properties,
+            requires_grad=optimize_density, 
         )
         self.log_youngs   = nn.Parameter(
             torch.log(torch.tensor(youngs)), 
-            requires_grad=optimize_properties,
+            requires_grad=optimize_youngs, 
         )
         self.log_poissons = nn.Parameter(
             torch.log(torch.tensor(poissons)), 
-            requires_grad=optimize_properties,
+            requires_grad=optimize_poissons, 
         )
 
         self.ground_pos  = ground_pos
