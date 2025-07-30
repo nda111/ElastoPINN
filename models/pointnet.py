@@ -15,10 +15,10 @@ class PointNet(MLPBase):
         Qi et al. "PointNet: Deep Learning on Point Sets for 3D Classification and Segmentation"
         '''
         nn.Module.__init__(self)
-        MLPBase.__init__(self, 4, [64, 64, 64, 128, 1024, 512, 256, 128], 3, 8, nn.ReLU)
+        MLPBase.__init__(self, in_dim, [64, 64, 64, 128, 1024, 512, 256, 128], 3, 8, nn.ReLU)
 
         self.encoder = nn.ModuleList([
-            self.__make_block(4, 64, 64),
+            self.__make_block(in_dim, 64, 64),
             self.__make_block(64, 64, 128, 1024),
         ])
         self.decoder = self.__make_block(1088, 512, 256, 128)
@@ -45,7 +45,7 @@ class PointNet(MLPBase):
         return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.transpose(1, 2)  # ....................| T, 4, P
+        x = x.transpose(1, 2)  # ....................| T, in_dim, P
         enc_0 = self.encoder[0].forward(x)  # .......| T, 64, P
         enc_1 = self.encoder[1].forward(enc_0)  # ...| T, 1028, P
         

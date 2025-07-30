@@ -19,8 +19,12 @@ class NavierCauchy(MLP):
         activation = nn.Tanh,
         up_index: int = 1             # 0:x, 1:y, 2:z -> suppose `y` is the vertical axis`
     ):
+        in_dim = 4
+        if optimize_density: in_dim += 1
+        if optimize_youngs: in_dim += 1
+        if optimize_poissons: in_dim += 1
         super().__init__(             # MLP intiialization
-            in_dim = 4,               # (x,y,z,t)
+            in_dim = in_dim,          # (x,y,z,t, density, youngs, poissons)
             hid_dim = hid_dim,
             out_dim = 3,              # (u,v,w)
             depth = depth,
@@ -134,6 +138,18 @@ class NavierCauchy(MLP):
         }
         
         return stress
+    
+    def forward(self, xyzt: torch.Tensor) -> torch.Tensor:
+        input_stack = [xyzt]
+        expand_fn = lambda x: x.reshape([1]*xyzt.ndim).expand_as(xyzt[..., :1])
+        if self.log_density.requires_grad:
+            input_stack.append(expand_fn(self.log_density))
+        if self.log_youngs.requires_grad:
+            input_stack.append(expand_fn(self.log_youngs))
+        if self.log_poissons.requires_grad:
+            input_stack.append(expand_fn(self.log_poissons))
+        xyzt = torch.cat(input_stack, dim=-1)  # ...| T, P, 4 + density + youngs + poissons)
+        return super().forward(xyzt)
 
     def compute_loss(
         self,
