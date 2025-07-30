@@ -35,15 +35,15 @@ class NavierCauchy(MLP):
             optimize_density=optimize_density,
             optimize_youngs=optimize_youngs,
             optimize_poissons=optimize_poissons,
-             up_index=up_index,
+            up_index=up_index,
         )
 
         # Log parameterization for positive values
-        self.log_density  = nn.Parameter(
+        self.log_density = nn.Parameter(
             torch.log(torch.tensor(density)), 
             requires_grad=optimize_density, 
         )
-        self.log_youngs   = nn.Parameter(
+        self.log_youngs = nn.Parameter(
             torch.log(torch.tensor(youngs)), 
             requires_grad=optimize_youngs, 
         )

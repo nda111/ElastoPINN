@@ -84,7 +84,9 @@ model = NavierCauchy(
     gravity    = 9.80665,              # The gravitational acceleration
     
     # Training options
-    optimize_properties = False,       # Indicates whether optimize ρ, E, ν
+    optimize_density    = False,       # Indicates whether optimize ρ
+    optimize_youngs     = True,        # Indicates whether optimize E
+    optimize_poissons   = True,        # Indicates whether optimize ν
     activation = nn.Tanh               # The activation function type of the MLP
 ).to(DEVICE)
 
@@ -211,7 +213,7 @@ for epoch in range(n_epochs):
     epoch_loss_detailed = loss_history_detailed.flush()
     epoch_loss = sum(epoch_loss_detailed.values())
 
-    # scheduler step w.r.t. to the total loss
+    # scheduler step w.r.t. the total loss
     for scheduler in schedulers:
         scheduler.step(epoch_loss)
 
