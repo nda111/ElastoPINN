@@ -1,5 +1,6 @@
 from typing import Optional
 import os
+from warnings import warn
 import shutil
 from numbers import Number
 import torch
@@ -67,6 +68,7 @@ class CheckpointWriter:
         save_best: bool=True,
         save_last: bool=True,
         larger_better: bool=False,
+        overwrite: bool=False,
     ):
         self.dir_name = dir_name
         self.save_first = save_first
@@ -76,9 +78,16 @@ class CheckpointWriter:
         self.larger_better = larger_better
 
         if os.path.exists(dir_name):
-            raise FileExistsError(f"'{dir_name}' already exists.")
-        else:
-            os.makedirs(dir_name, exist_ok=False)
+            if overwrite:
+                shutil.rmtree(dir_name)
+                warn(
+                    f"'{dir_name}' already exists, but it has been removed for overwriting.",
+                    RuntimeWarning,
+                )
+            else:
+                raise FileExistsError(f"'{dir_name}' already exists.")
+        os.makedirs(dir_name, exist_ok=False)
+        
         self.count = 0
         self.best = \
             -float('inf') if larger_better else \
@@ -90,7 +99,7 @@ class CheckpointWriter:
         if self.save_first and (self.count == 1):
             torch.save(checkpoint, os.path.join(self.dir_name, 'first.pt'))
         
-        if (self.save_every > 0) and ((self.save_every % self.count) == 0):
+        if (self.save_every > 0) and ((self.count % self.save_every) == 0):
             torch.save(checkpoint, os.path.join(self.dir_name, f'{self.count:06d}.pt'))
         
         if self.save_best:

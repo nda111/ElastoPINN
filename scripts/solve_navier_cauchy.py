@@ -27,6 +27,7 @@ add('--batch-size', '-bs', type=int, default=20000)
 add('--learning-rate', '-lr', type=float, default=1.0E-4)
 add('--epochs', '-e', type=int, default=100_000)
 add('--tag', type=str, default=None)
+add('--overwrite', action='store_true', default=False)
 args = parser.parse_args()
 
 # -------------------------------------
@@ -138,6 +139,7 @@ ckpt_writer = CheckpointWriter(
     save_best=True,
     save_last=True,
     larger_better=False,
+    overwrite=args.overwrite,
 )
 ckpt_writer.copy_code(__file__)
 ckpt_writer.copy_code(inspect.getfile(NavierCauchy))
