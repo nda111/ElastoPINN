@@ -85,8 +85,7 @@ solver = NavierCauchy(
 
     # Physical parameters
     density = cfg.ELASTOMER.DENSITY,    # kg m⁻³
-    # youngs  = cfg.ELASTOMER.YOUNGS,     # Pa
-    youngs  = 1.0E+5,     # Pa
+    youngs  = cfg.ELASTOMER.YOUNGS,     # Pa
     poissons= cfg.ELASTOMER.POISSONS,
     
     # Physical parameter optimization options
