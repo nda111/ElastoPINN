@@ -2,6 +2,7 @@ from typing import Optional
 import os
 from warnings import warn
 import shutil
+import numpy as np
 from numbers import Number
 import torch
 
@@ -14,7 +15,13 @@ class Averager:
     
     def push(self, subdata: dict[str, torch.Tensor], flush: bool=False):
         for key, val in subdata.items():
-            val = val.clone().detach().cpu()
+            if isinstance(val, torch.Tensor):
+                val = val.clone().detach().cpu()
+            elif isinstance(val, np.ndarray):
+                val = torch.from_numpy(val)
+            else:
+                val = torch.tensor(val)
+                
             if key in self.subdata:
                 self.subdata[key].append(val)
                 self.count[key] += 1

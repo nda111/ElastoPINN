@@ -8,6 +8,8 @@ from torch.utils.data import DataLoader
 
 from configs.config import CFG as cfg
 from data.pac_nerf import PACNeRFDataset
+
+from models.mlp import mlp_dict
 from models.navier_cauchy import NavierCauchy
 from utils.logging import (
     Averager,
@@ -18,14 +20,18 @@ from utils.logging import (
 # -------------------------------------
 # Load configuration
 # -------------------------------------
+
 parser = ArgumentParser('Navier-Cauchy')
 add = parser.add_argument
 add('--device', '-d', type=int, default=0)
-add('--object', '-o', type=str, default='bird')
+add('--object', '-o', type=str.lower, default='bird', choices=PACNeRFDataset.INSTANCES)
+add('--mlp', '-mlp', type=str.lower, default='mlp', choices=mlp_dict.keys())
 add('--num-frames', '-nf', type=int, default=14)
 add('--batch-size', '-bs', type=int, default=20000)
 add('--learning-rate', '-lr', type=float, default=1.0E-4)
-add('--epochs', '-e', type=int, default=100_000)
+add('--property-learning-rate', '-plr', type=float, default=1.0E-1)
+add('--epochs', '-e', type=int, default=10_000)
+add('--save-every', type=int, default=1_000)
 add('--tag', type=str, default=None)
 add('--overwrite', action='store_true', default=False)
 args = parser.parse_args()
@@ -33,6 +39,7 @@ args = parser.parse_args()
 # -------------------------------------
 # Load configuration
 # -------------------------------------
+
 object_name = args.object
 cfg_fname = f'configs/{object_name}.yaml'
 cfg.merge_from_file(cfg_fname)
@@ -61,48 +68,46 @@ loader = DataLoader(
     shuffle=True,
 )
 
-
-# for s in loader : 
-#     print(s['time'])
-# quit()
 # -------------------------------------
 # PINN Model
 # -------------------------------------
 
-model = NavierCauchy(
+solver = NavierCauchy(
     hid_dim=128,
     depth=8,
-
-    # Actual physical parameters (or initial values)
-    density = cfg.ELASTOMER.DENSITY,    # kg m⁻³
-    youngs  = cfg.ELASTOMER.YOUNGS,     # Pa
-    poissons= cfg.ELASTOMER.POISSONS,
+    model_type=mlp_dict[args.mlp],
+    activation = nn.Tanh,
     
     # Environment
     ground_pos = 0,                    # The y-coord of the ground
     up_index   = dataset.up_index,     # The y axis will be the gravity direction
     gravity    = 9.80665,              # The gravitational acceleration
+
+    # Physical parameters
+    density = cfg.ELASTOMER.DENSITY,    # kg m⁻³
+    youngs  = cfg.ELASTOMER.YOUNGS,     # Pa
+    poissons= cfg.ELASTOMER.POISSONS,
     
-    # Training options
-    optimize_density    = False,       # Indicates whether optimize ρ
-    optimize_youngs     = True,        # Indicates whether optimize E
-    optimize_poissons   = True,        # Indicates whether optimize ν
-    activation = nn.Tanh               # The activation function type of the MLP
+    # Physical parameter optimization options
+    optimize_density    = False,        # Indicates whether optimize ρ
+    optimize_youngs     = True,         # Indicates whether optimize E
+    optimize_poissons   = False,        # Indicates whether optimize ν
 ).to(DEVICE)
 
 # -------------------------------------
 # Optimizers & Schedulers
 # -------------------------------------
+
 n_epochs = args.epochs
 
 optimizers = [
     optim.AdamW(
-        model.network_parameters(),
+        solver.network_parameters(),
         lr=args.learning_rate,
     ), 
     optim.Adam(
-        model.property_parameters(),
-        lr=1e-1,
+        solver.property_parameters(),
+        lr=args.property_learning_rate,
     ), 
 ]
 
@@ -115,29 +120,23 @@ schedulers = [
 ]
 
 # -------------------------------------
-# Training Loop
+# Logging
 # -------------------------------------
-
-# The loss weights
-loss_weight_pde: float = cfg.ELASTOMER.LOSS.PDE
-loss_weight_gt: float = cfg.ELASTOMER.LOSS.GT
-loss_weight_vel: float = cfg.ELASTOMER.LOSS.VEL
-loss_weight_bc: float = cfg.ELASTOMER.LOSS.BC
-loss_weight_ic: float = cfg.ELASTOMER.LOSS.IC
 
 # Logger
 loss_history = Averager()
 loss_history_detailed = Averager()
 prop_history = Averager()
 prop_history.push({
-    'density': model.density,
-    'youngs': model.youngs,
-    'poissons': model.poissons,
+    'density': solver.density,
+    'youngs': solver.youngs,
+    'poissons': solver.poissons,
 }, flush=True)
+lr_history = Averager()
 ckpt_writer = CheckpointWriter(
     dir_name=f'./output/{object_name}_{args.tag}' if args.tag else f'./output/{object_name}',
     save_first=False,
-    save_every=1000,
+    save_every=args.save_every,
     save_best=True,
     save_last=True,
     larger_better=False,
@@ -149,6 +148,17 @@ ckpt_writer.copy_code(
     inspect.getfile(NavierCauchy.__base__),
     'mlp.py',
 )
+
+# -------------------------------------
+# Training Loop
+# -------------------------------------
+
+# The loss weights
+loss_weight_pde: float = cfg.ELASTOMER.LOSS.PDE
+loss_weight_gt: float = cfg.ELASTOMER.LOSS.GT
+loss_weight_vel: float = cfg.ELASTOMER.LOSS.VEL
+loss_weight_bc: float = cfg.ELASTOMER.LOSS.BC
+loss_weight_ic: float = cfg.ELASTOMER.LOSS.IC
 
 # The training loop
 for epoch in range(n_epochs):
@@ -170,24 +180,25 @@ for epoch in range(n_epochs):
         time_value = time_value.to(DEVICE)
         xyzt = torch.cat([geometry, time_value], dim=-1)  # ............| T, P, 4
         
-        if model.input_shape == 'flat':
+        if solver.model.input_shape == 'flat':
             geometry = geometry.flatten(0, 1)  # .......................| TP, 3
             displacement = displacement.flatten(0, 1)  # ...............| TP, 3 
             time_value = time_value.flatten(0, 1)  # ...................| TP, 1 
             xyzt = xyzt.flatten(0, 1)  # ...............................| TP, 4
-        elif model.input_shape == 'spatio-temporal':
+        elif solver.model.input_shape == 'spatio-temporal':
             pass
         else:
-            raise NotImplementedError(model.input_shape)
+            raise NotImplementedError(solver.model.input_shape)
 
         # forward
-        losses = model.compute_loss(
+        losses = solver.compute_loss(
             xyzt,
             time_dim=num_timesteps,
             point_dim=num_points,
             time=time_value,
             displacement=displacement,
-            use_vel=True,
+            use_pde=True,
+            use_vel=False,
         )
         losses: dict[str, torch.Tensor] = {
             'pde_loss': losses['pde_loss'] * loss_weight_pde,
@@ -215,16 +226,20 @@ for epoch in range(n_epochs):
 
     # scheduler step w.r.t. the total loss
     for scheduler in schedulers:
-        scheduler.step(epoch_loss)
+        scheduler.step()
 
     # logging the physical parameters and total loss
     loss_history.push({
         'loss': epoch_loss,
     }, flush=True)
     prop_history.push({
-        'youngs': model.youngs.data,
-        'poissons': model.poissons.data,
-        'density': model.density.data,
+        'youngs': solver.youngs.data,
+        'poissons': solver.poissons.data,
+        'density': solver.density.data,
+    }, flush=True)
+    lr_history.push({
+        'network': optimizers[0].param_groups[0]['lr'],
+        'prop': optimizers[1].param_groups[0]['lr'],
     }, flush=True)
     
     # save the checkpoints to the file(s)
@@ -232,23 +247,25 @@ for epoch in range(n_epochs):
         'epoch': epoch + 1,
         'model': {
             key: val.clone().detach().cpu()
-            for key, val in model.state_dict().items()
+            for key, val in solver.state_dict().items()
         },
-        'model_config': model.config,
+        'model_config': solver.config,
         'optimizers': [
             optimizer.state_dict() 
             for optimizer in optimizers
         ],
         'loss_list': loss_history.gather(),
         'loss_detailed': loss_history_detailed.gather(),
+        'lr_list': lr_history.gather(),
         'prop_traj': prop_history.gather(),
     }, score=epoch_loss)
 
     print(
         f"Epoch {epoch+1}", 
-        f"Loss: {epoch_loss.item():.6f}", 
-        f"ρ: {model.density.item():.2E}", 
-        f"ν: {model.poissons.item():.2E}", 
-        f"E: {model.youngs.item():.2E}", 
+        f"Loss: {epoch_loss.item():.2f}", 
+        f"LR: {lr_history.gather()['network'][-1]:.2E}",
+        f"ρ: {solver.density.item():.4E}", 
+        f"ν: {solver.poissons.item():.4E}", 
+        f"E: {solver.youngs.item():.4E}", 
         sep=' ',
     )
