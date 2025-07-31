@@ -108,7 +108,7 @@ optimizers = [
     ), 
     optim.Adam(
         solver.property_parameters(),
-        lr=1e-1,
+        lr=args.property_learning_rate,
     ), 
 ]
 
