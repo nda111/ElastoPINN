@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from pytorch3d.ops import sample_farthest_points, knn_points
-from .mlp import MLPBase
+from .mlp import MLPBase, mlp_forward
 
 
 class Attention(nn.Module):
@@ -54,7 +54,8 @@ class AttnMLP(MLPBase):
         self.layer_output = self._make_linear_head()
         
         self._initialize_weights() 
-        
+    
+    @mlp_forward
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_i = self.layer_input.forward(x)
         x_h0 = self.layer_hidden_0.forward(x_i)

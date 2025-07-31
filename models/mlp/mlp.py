@@ -1,7 +1,51 @@
 from abc import ABC, abstractmethod
-from typing import Generator, Optional, Literal
+from typing import Generator, Optional, Literal, Callable
 import torch
 from torch import nn
+
+
+class MLPOutput:
+    def __init__(
+        self, 
+        local_branch: torch.Tensor, 
+        global_branch: Optional[torch.Tensor]=None
+    ):
+        self._local_branch = local_branch
+        self._global_branch = global_branch
+        
+    @property
+    def local_branch(self) -> torch.Tensor:
+        return self._local_branch
+    
+    @property
+    def global_branch(self) -> torch.Tensor:
+        if self._global_branch is None:
+            return self.local_branch
+        else:
+            return self._global_branch
+    
+    def __str__(self) -> torch.Tensor:
+        if self._global_branch is None:
+            return f'MLPOutput(local={tuple(self._local_branch.shape)}, global=local)'
+        else:
+            return f'MLPOutput(local={tuple(self._local_branch.shape)}, global={tuple(self._global_branch.shape)})'
+
+
+def mlp_forward(func: Callable):
+    def mlp_forward(*args, **kwargs):
+        error = RuntimeError('MLPOutput must return a tensor of a 2-tuple of tensors.')
+        output = func(*args, **kwargs)
+        if isinstance(output, torch.Tensor):
+            return MLPOutput(output)
+        elif isinstance(output, tuple):
+            if len(output) != 2:
+                raise error
+            if not (isinstance(output[0], torch.Tensor) and isinstance(output[1], torch.Tensor)):
+                raise error
+            return MLPOutput(*output)
+        else:
+            raise error
+    return mlp_forward
 
 
 class MLPBase(nn.Module, ABC):
@@ -21,10 +65,10 @@ class MLPBase(nn.Module, ABC):
         return 'flat'
         
     @abstractmethod
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> MLPOutput:
         pass
     
-    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+    def __call__(self, x: torch.Tensor) -> MLPOutput:
         return self.forward(x)
     
     def _make_stem_block(self, hid_dim: Optional[int]=None):
@@ -88,8 +132,9 @@ class MLP(MLPBase):
             self._make_linear_head(),
         )
         self._initialize_weights()
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    
+    @mlp_forward
+    def forward(self, x: torch.Tensor) -> MLPOutput:
         return self.layers.forward(x)
 
 
@@ -109,7 +154,8 @@ class GlobalMLP(MLPBase):
         self.layer_output = self._make_linear_head()
         
         self._initialize_weights()
-        
+    
+    @mlp_forward
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_i = self.layer_input.forward(x)
         x_h0 = self.layer_hidden_0.forward(x_i)

@@ -91,8 +91,10 @@ class NavierCauchy(Solver):
         xyzt.requires_grad_(True)
         
         # 1. MLP forward
-        uvw = self.forward(xyzt)
-        u, v, w = torch.unbind(uvw, dim=-1)
+        mlp_output = self.forward(xyzt)
+        uvw_local = mlp_output.local_branch
+        uvw_global = mlp_output.global_branch
+        u, v, w = torch.unbind(uvw_local, dim=-1)
 
         # 2. autograds (u, v, w) with respect to xyzt.
         grad_u = autograd.grad(
@@ -177,14 +179,13 @@ class NavierCauchy(Solver):
         ic_mask = xyzt[..., 3] == 0.0
         if use_ic and (ic_mask.sum() > 0):
             if xyzt.ndim == 2:
-                ic_u = self.forward(xyzt[ic_mask]).reshape(-1, 3)
+                ic_u = self.forward(xyzt[ic_mask]).local_branch.reshape(-1, 3)
             elif xyzt.ndim == 3:
-                ic_u = self.forward(xyzt).reshape(time_dim, point_dim, -1)[ic_mask]
+                ic_u = uvw_local.reshape(time_dim, point_dim, -1)[ic_mask]
             u0 = torch.zeros_like(ic_u)
             ic_loss = torch.nn.functional.mse_loss(ic_u, u0)
         else:
             ic_loss = torch.tensor(0.0, **kwargs)
-
 
         # 5. Boundary Condition (BC) Loss
         bc_loss = torch.tensor(0.0, **kwargs)
@@ -219,7 +220,7 @@ class NavierCauchy(Solver):
             
         # 6. Velocity-Driven GT Loss
         if use_vel and (displacement is not None) and (time is not None):
-            uvw_unflat = u.reshape(time_dim, point_dim, -1)
+            uvw_unflat = uvw_global.reshape(time_dim, point_dim, -1)
             disp_unflat = displacement.reshape(time_dim, point_dim, -1)
             time_unflat = time.reshape(time_dim, point_dim, -1)
             delta_time = time_unflat[+1:] - time_unflat[:-1]
@@ -235,16 +236,16 @@ class NavierCauchy(Solver):
         gt_loss = torch.tensor(0.0, **kwargs)
         if displacement is not None:
             disp_flat = displacement.reshape(-1, 3)
-            l1_loss = torch.mean((uvw - disp_flat).abs())
-            l2_loss = torch.mean((uvw - disp_flat).square())
+            l1_loss = torch.mean((uvw_global - disp_flat).abs())
+            l2_loss = torch.mean((uvw_global - disp_flat).square())
             gt_loss = l1_loss + l2_loss
 
         return {
-            "pde_loss":      pde_loss,
-            "ic_loss":       ic_loss,
-            "vel_loss":      vel_loss,
-            "gt_loss":       gt_loss,
-            "bc_loss" :      bc_loss,
+            "pde_loss": pde_loss,
+            "ic_loss":  ic_loss,
+            "vel_loss": vel_loss,
+            "gt_loss":  gt_loss,
+            "bc_loss" : bc_loss,
         }
 
 

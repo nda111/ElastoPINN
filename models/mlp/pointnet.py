@@ -1,7 +1,7 @@
 from typing import Literal
 import torch
 from torch import nn
-from .mlp import MLPBase
+from .mlp import MLPBase, mlp_forward
 
 
 class PointNet(MLPBase):
@@ -44,6 +44,7 @@ class PointNet(MLPBase):
             layers.append(nn.BatchNorm1d(channels[-1]))
         return nn.Sequential(*layers)
 
+    @mlp_forward
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.transpose(1, 2)  # ....................| T, in_dim, P
         enc_0 = self.encoder[0].forward(x)  # .......| T, 64, P

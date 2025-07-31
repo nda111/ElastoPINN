@@ -1,7 +1,7 @@
 from typing import Literal
 import torch
 from torch import nn
-from .mlp import MLPBase
+from .mlp import MLPBase, mlp_forward
 
 
 class Attention(nn.Module):
@@ -58,7 +58,8 @@ class TimeAttnMLP(MLPBase):
     @property
     def input_shape(self) -> Literal['flat', 'spatio-temporal']:
         return 'spatio-temporal'
-        
+    
+    @mlp_forward
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_i = self.layer_input.forward(x)
         x_h0 = self.layer_hidden_0.forward(x_i)

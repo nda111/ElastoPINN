@@ -2,7 +2,7 @@ from typing import Type, Any, Generator
 from abc import ABC, abstractmethod
 import torch
 from torch import nn
-from .mlp import MLPBase, MLP
+from .mlp import MLPOutput, MLPBase, MLP
 
 
 class Solver(nn.Module, ABC):
@@ -72,7 +72,7 @@ class Solver(nn.Module, ABC):
     def network_parameters(self) -> Generator[nn.Parameter, None, None]:
         yield from self.model.parameters()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> MLPOutput:
         return self.model.forward(x)
 
     @abstractmethod
