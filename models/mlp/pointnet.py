@@ -11,18 +11,18 @@ class PointNet(MLPBase):
         activation=nn.Tanh,
     ):
         '''
-        ***CAUTION: All parameters will be ignored and replaced with the default PointNet configuration.***
+        ***CAUTION: `hid_dim` and `depth` will be ignored and replaced with the default PointNet configuration.***
         Qi et al. "PointNet: Deep Learning on Point Sets for 3D Classification and Segmentation"
         '''
         nn.Module.__init__(self)
-        MLPBase.__init__(self, in_dim, [64, 64, 64, 128, 1024, 512, 256, 128], 3, 8, nn.ReLU)
+        MLPBase.__init__(self, in_dim, [64, 64, 64, 128, 1024, 512, 256, 128], out_dim, 8, activation=activation)
 
         self.encoder = nn.ModuleList([
-            self.__make_block(in_dim, 64, 64),
-            self.__make_block(64, 64, 128, 1024),
+            self.__make_block(in_dim, 64, 64, activation=activation),
+            self.__make_block(64, 64, 128, 1024, activation=activation),
         ])
-        self.decoder = self.__make_block(1088, 512, 256, 128)
-        self.head = nn.Linear(128, 3)
+        self.decoder = self.__make_block(1088, 512, 256, 128, activation=activation)
+        self.head = nn.Linear(128, out_dim)
         
     @property
     def input_shape(self) -> Literal['flat', 'spatio-temporal']:

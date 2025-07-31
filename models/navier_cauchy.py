@@ -1,75 +1,61 @@
+from typing import Type
 import torch
 from torch import nn, autograd
-from .pointnet import PointNet as MLP
-from typing import Any, Dict  
+from .mlp import MLPBase, MLP
+from .solver import Solver
 
 
-class NavierCauchy(MLP):
+class NavierCauchy(Solver):
     def __init__(
         self,
-        hid_dim: int = 200, depth: int = 6,
-        density: float = 1.0e3,
-        youngs: float = 1.0e6,
-        poissons: float = 0.30,
-        ground_pos: float = 0.0,      # the ground will be at `y = ground_pos`
-        gravity: float = 9.8,         # positive sign for downward
-        insert_density : bool=False,
-        insert_youngs  : bool=False,
-        insert_poissons: bool=False,
+        # specifying the model architecture
+        hid_dim: int = 200,
+        depth: int = 6,
+        activation: Type[nn.Module] = nn.Tanh,
+        model_type: Type[MLPBase] = MLP,
+        # configuring the environment
+        ground_pos: float = 0.0,
+        gravity: float = 9.8,
+        up_index: int = 1,
+        # configuring the physical properties
+        density: float = 1.0E+3,
+        youngs: float = 1.0E+6,
+        poissons: float = 3.0E-1,
         optimize_density : bool=False,
         optimize_youngs  : bool=False,
         optimize_poissons: bool=False,
-        activation = nn.Tanh,
-        up_index: int = 1             # 0:x, 1:y, 2:z -> suppose `y` is the vertical axis`
+        **kwargs,
     ):
-        in_dim = 4
-        if insert_density: in_dim += 1
-        if insert_youngs: in_dim += 1
-        if insert_poissons: in_dim += 1
-        super().__init__(             # MLP intiialization
-            in_dim = in_dim,          # (x,y,z,t, density, youngs, poissons)
-            hid_dim = hid_dim,
-            out_dim = 3,              # (u,v,w)
-            depth = depth,
-            activation = activation,
-        )
-
-        self.config: Dict[str, Any] = dict(
+        super().__init__(
+            in_dim=4, 
             hid_dim=hid_dim, 
-            depth=depth,
-            density=density, youngs=youngs, poissons=poissons,
-            ground_pos=ground_pos, gravity=gravity,
-            insert_density=insert_density,
-            insert_youngs=insert_youngs,
-            insert_poissons=insert_poissons,
-            optimize_density=optimize_density,
-            optimize_youngs=optimize_youngs,
-            optimize_poissons=optimize_poissons,
-            up_index=up_index,
+            out_dim=3, 
+            depth=depth, 
+            activation=activation, 
+            model_type=model_type, 
+            ground_pos=ground_pos, 
+            gravity=gravity, 
+            up_index=up_index, 
         )
 
         # Log parameterization for positive values
-        self.insert_density  = insert_density 
-        self.insert_youngs   = insert_youngs  
-        self.insert_poissons = insert_poissons
+        self.register_physical_property('density', density, optimize_density)
         self.log_density = nn.Parameter(
             torch.log(torch.tensor(density)), 
             requires_grad=optimize_density, 
         )
+        self.register_physical_property('youngs', youngs, optimize_youngs)
         self.log_youngs = nn.Parameter(
             torch.log(torch.tensor(youngs)), 
             requires_grad=optimize_youngs, 
         )
+        self.register_physical_property('poissons', poissons, optimize_poissons)
         self.log_poissons = nn.Parameter(
             torch.log(torch.tensor(poissons)), 
             requires_grad=optimize_poissons, 
         )
 
-        self.ground_pos  = ground_pos
-        self.gravity     = gravity
-        self.up_index    = up_index
-
-    # 재료 상수 property
+    # Physical properties
     @property
     def density(self): 
         return torch.exp(self.log_density)
@@ -83,15 +69,9 @@ class NavierCauchy(MLP):
         return torch.exp(self.log_poissons)
 
     def property_parameters(self):
-        """ Returns the material properties parameters only. """
         yield self.log_density
         yield self.log_youngs
         yield self.log_poissons
-
-    def network_parameters(self):
-        """ Returns only the MLP parameters. """
-        ignored = set(self.property_parameters())
-        yield from set(self.parameters()) - ignored
     
     def compute_stress_tensor(self, xyzt: torch.Tensor):
         """
@@ -148,18 +128,6 @@ class NavierCauchy(MLP):
         }
         
         return stress
-    
-    def forward(self, xyzt: torch.Tensor) -> torch.Tensor:
-        input_stack = [xyzt]
-        expand_fn = lambda x: x.reshape([1]*xyzt.ndim).expand_as(xyzt[..., :1])
-        if self.insert_density:
-            input_stack.append(expand_fn(self.log_density))
-        if self.insert_youngs:
-            input_stack.append(expand_fn(self.log_youngs))
-        if self.insert_poissons:
-            input_stack.append(expand_fn(self.log_poissons))
-        xyzt = torch.cat(input_stack, dim=-1)  # ...| T, P, 4 + density + youngs + poissons)
-        return super().forward(xyzt)
 
     def compute_loss(
         self,
