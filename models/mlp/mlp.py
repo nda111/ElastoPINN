@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Generator, Optional, Literal, Callable
 import torch
 from torch import nn
+from utils.nn import SIREN
 
 
 class MLPOutput:
@@ -91,6 +92,12 @@ class MLPBase(nn.Module, ABC):
         if hid_dim is None:
             hid_dim = self.hid_dim
         return nn.Linear(hid_dim, self.out_dim)
+
+    def _initialize_siren(self):
+        for module in self.modules():
+            if isinstance(module, SIREN):
+                module.is_first = True
+                break
     
     def _initialize_weights(self):
         for m in self.modules():
@@ -98,6 +105,7 @@ class MLPBase(nn.Module, ABC):
                 nn.init.xavier_normal_(m.weight)
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
+        self._initialize_siren()
     
     def arguments(self) -> Generator:
         yield ('in_dim', self.in_dim)
