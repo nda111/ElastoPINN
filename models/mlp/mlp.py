@@ -93,19 +93,18 @@ class MLPBase(nn.Module, ABC):
             hid_dim = self.hid_dim
         return nn.Linear(hid_dim, self.out_dim)
 
-    def _initialize_siren(self):
+    def initialize_siren(self):
         for module in self.modules():
             if isinstance(module, SIREN):
                 module.is_first = True
                 break
     
-    def _initialize_weights(self):
+    def initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_normal_(m.weight)
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
-        self._initialize_siren()
     
     def arguments(self) -> Generator:
         yield ('in_dim', self.in_dim)
@@ -139,7 +138,8 @@ class MLP(MLPBase):
             *self._make_hidden_blocks(self.depth),
             self._make_linear_head(),
         )
-        self._initialize_weights()
+        self.initialize_weights()
+        self.initialize_siren()
     
     @mlp_forward
     def forward(self, x: torch.Tensor) -> MLPOutput:
@@ -161,7 +161,8 @@ class GlobalMLP(MLPBase):
         self.layer_hidden_2 = nn.Sequential(*self._make_hidden_blocks(1))
         self.layer_output = self._make_linear_head()
         
-        self._initialize_weights()
+        self.initialize_weights()
+        self.initialize_siren()
     
     @mlp_forward
     def forward(self, x: torch.Tensor) -> torch.Tensor:
