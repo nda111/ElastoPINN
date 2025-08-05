@@ -41,18 +41,21 @@ class NavierCauchy(Solver):
         # Log parameterization for positive values
         self.register_physical_property('density', density, optimize_density)
         self.log_density = nn.Parameter(
-            torch.log(torch.tensor(density)), 
-            requires_grad=optimize_density, 
+            torch.log(torch.tensor(density)),
+            requires_grad=optimize_density,
         )
         self.register_physical_property('youngs', youngs, optimize_youngs)
         self.log_youngs = nn.Parameter(
-            torch.log(torch.tensor(youngs)), 
-            requires_grad=optimize_youngs, 
+            torch.log(torch.tensor(youngs)),
+            requires_grad=optimize_youngs,
         )
+
+        # Poisson's ratio must lie in (0, 0.5).
+        # Map the learnable parameter through a sigmoid to enforce this range.
         self.register_physical_property('poissons', poissons, optimize_poissons)
-        self.log_poissons = nn.Parameter(
-            torch.log(torch.tensor(poissons)), 
-            requires_grad=optimize_poissons, 
+        self.logit_poissons = nn.Parameter(
+            torch.logit(torch.tensor(poissons * 2, dtype=torch.float32)),
+            requires_grad=optimize_poissons,
         )
 
     # Physical properties
@@ -61,17 +64,17 @@ class NavierCauchy(Solver):
         return torch.exp(self.log_density)
 
     @property
-    def youngs(self): 
+    def youngs(self):
         return torch.exp(self.log_youngs)
 
     @property
-    def poissons(self): 
-        return torch.exp(self.log_poissons)
+    def poissons(self):
+        return torch.sigmoid(self.logit_poissons) * 0.5
 
     def property_parameters(self):
         yield self.log_density
         yield self.log_youngs
-        yield self.log_poissons
+        yield self.logit_poissons
     
     def compute_loss(
         self,
